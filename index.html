@@ -163,14 +163,14 @@ select,.search input,.dt input{border:1px solid var(--line-2); background:var(--
 .calbtn:hover{background:var(--surface-2); color:var(--accent)}
 .calbtn svg{width:16px; height:16px}
 /* built-in date picker popup (no native/browser dependency) */
-.dp{position:absolute; z-index:50; background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:0 12px 32px rgba(20,26,50,.18); padding:10px; width:250px}
+.dp{position:absolute; z-index:50; background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:0 12px 32px rgba(20,26,50,.18); padding:12px; width:auto}
 .dp-head{display:flex; align-items:center; gap:6px; margin-bottom:8px}
 .dp-head .my{flex:1; text-align:center; font-weight:700; font-size:13.5px; font-family:"Archivo"}
 .dp-nav{border:1px solid var(--line-2); background:var(--surface); color:var(--ink-2); width:28px; height:28px; border-radius:7px; cursor:pointer; display:grid; place-items:center; font-size:14px}
 .dp-nav:hover{border-color:var(--accent); color:var(--accent)}
-.dp-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:2px}
-.dp-grid .dow{font-size:10px; color:var(--muted); text-align:center; padding:2px 0; font-weight:600}
-.dp-day{border:none; background:transparent; color:var(--ink); border-radius:7px; height:30px; cursor:pointer; font-size:12.5px}
+.dp-grid{display:grid; grid-template-columns:repeat(7,32px); gap:3px; justify-content:center}
+.dp-grid .dow{font-size:10px; color:var(--muted); font-weight:700; height:22px; display:grid; place-items:center}
+.dp-day{border:none; background:transparent; color:var(--ink); border-radius:7px; width:32px; height:32px; cursor:pointer; font-size:12.5px; display:grid; place-items:center; padding:0}
 .dp-day:hover{background:var(--accent-soft); color:var(--accent-deep)}
 .dp-day.sel{background:var(--accent); color:#fff; font-weight:700}
 .dp-day.today{outline:1px solid var(--accent); outline-offset:-1px}
@@ -211,6 +211,11 @@ tr[data-tier="Open"] td.step::before{background:var(--line-2)}
 .tier.Nudge{background:var(--warn-soft); color:var(--warn)}
 .tier.Remind{background:var(--warn-soft); color:color-mix(in srgb,var(--warn) 80%,var(--ink))}
 .tier.Open{background:var(--open-soft); color:var(--open)}
+/* carried-over / overdue tasks (planned before today) — flag as priority */
+tbody tr.overdue{background:color-mix(in srgb,var(--crit) 7%,transparent)}
+tbody tr.overdue:hover{background:color-mix(in srgb,var(--crit) 12%,transparent)}
+tbody tr.overdue td:first-child{box-shadow:inset 3px 0 0 var(--crit)}
+.prio-badge{display:inline-block; font-size:9.5px; font-weight:800; letter-spacing:.04em; color:#fff; background:var(--crit); padding:2px 7px; border-radius:99px; margin-left:6px; vertical-align:middle; white-space:nowrap}
 .doclink{color:var(--accent); text-decoration:none; font-size:12px}
 .doclink:hover{text-decoration:underline}
 .rowmeta{color:var(--faint); font-size:11px}
@@ -787,7 +792,9 @@ function renderTable(rf){
     const dl=r.daysLate>0?`<span class="late" style="color:${r.tier==="Escalate"?"var(--crit)":r.tier==="Nudge"?"var(--warn)":"var(--ink)"}">${r.daysLate}d</span>`:'<span class="rowmeta">—</span>';
     const doc=r.docLink&&/^https?:/i.test(r.docLink)?`<a class="doclink" href="${esc(r.docLink)}" target="_blank" rel="noopener">Open ↗</a>`:"";
     const web=r.webinarDate&&String(r.webinarDate).trim()?` · Webinar ${esc(fmtDate(r.webinarDate))}`:"";
-    return `<tr data-tier="${r.tier}"><td>${esc(r.doer)}</td><td><span class="client">${esc(r.client)}</span><div class="rowmeta">row ${r.sheetRow}${web} ${doc}</div></td><td><span class="fms-tag">${esc(r.source)}</span></td><td class="step">${esc(r.step)}${r.task?`<div class="rowmeta">Task: ${esc(r.task)}</div>`:""}${r.taskDetail?`<div class="rowmeta">${esc(r.taskDetail)}</div>`:""}</td><td class="mono">${esc(fmtDate(r.planned))}</td><td class="mono">${dl}</td><td><span class="tier ${r.tier}">${r.tier}</span></td><td class="rowmeta">${esc(r.status)}</td></tr>`;
+    const over=r.daysLate>=1;
+    const prio=over?`<span class="prio-badge" title="Carried over from an earlier date — treat as priority">⚠ PRIORITY</span>`:"";
+    return `<tr data-tier="${r.tier}"${over?' class="overdue"':""}><td>${esc(r.doer)}</td><td><span class="client">${esc(r.client)}</span><div class="rowmeta">row ${r.sheetRow}${web} ${doc}</div></td><td><span class="fms-tag">${esc(r.source)}</span></td><td class="step">${esc(r.step)}${prio}${r.task?`<div class="rowmeta">Task: ${esc(r.task)}</div>`:""}${r.taskDetail?`<div class="rowmeta">${esc(r.taskDetail)}</div>`:""}</td><td class="mono">${esc(fmtDate(r.planned))}</td><td class="mono">${dl}</td><td><span class="tier ${r.tier}">${r.tier}</span></td><td class="rowmeta">${esc(r.status)}</td></tr>`;
   }).join("");
 }
 function renderMsgs(rf){
@@ -796,8 +803,11 @@ function renderMsgs(rf){
   if(!doers.length){ $("#msgGrid").innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="big">No follow-ups needed</div>Nothing matches the current view/filters.</div>`; return; }
   $("#msgGrid").innerHTML=doers.map(d=>{
     const items=by[d].slice().sort((a,b)=>b.daysLate-a.daysLate);
+    const overCount=items.filter(p=>p.daysLate>=1).length;
     const groups={}; items.forEach(p=>{ (groups[p.source]=groups[p.source]||[]).push(p); });
-    const lines=[`Hi ${d},`,`These FMS tasks are still pending — please complete each and update its Status from "Pending" in the sheet:`,""];
+    const lines=[`Hi ${d},`];
+    if(overCount>0) lines.push(`⚠ PRIORITY: ${overCount} task${overCount>1?"s":""} below ${overCount>1?"are":"is"} OVERDUE from an earlier date — please clear ${overCount>1?"these":"this"} FIRST. They are marked ⚠ below.`);
+    lines.push(`These FMS tasks are still pending — please complete each and update its Status from "Pending" in the sheet:`,"");
     Object.keys(groups).sort().forEach(src=>{
       const g=groups[src], head=g[0].tab?(g[0].tab+(g[0].file?" ("+g[0].file+")":"")):src;
       lines.push(head+":");
@@ -805,13 +815,14 @@ function renderMsgs(rf){
         const late=p.daysLate>0?` (${p.daysLate} day${p.daysLate>1?"s":""} late)`:"";
         const when=p.planned?fmtDate(p.planned):"no date";
         const web=p.webinarDate&&String(p.webinarDate).trim()?` — Webinar: ${fmtDate(p.webinarDate)}`:"";
-        lines.push(`  ${i+1}. ${p.client} — ${p.step} — Planned: ${when}${late} — Row ${p.sheetRow}${web}`);
+        const flag=p.daysLate>=1?"⚠ PRIORITY — ":"";
+        lines.push(`  ${i+1}. ${flag}${p.client} — ${p.step} — Planned: ${when}${late} — Row ${p.sheetRow}${web}`);
         if(p.task) lines.push(`     Task: ${p.task}`);
         if(p.taskDetail) lines.push(`     Task (in detail): ${p.taskDetail}`);
       });
       lines.push("");
     });
-    lines.push(`Total: ${items.length} pending. Please update each row's Status in the sheet once completed. Thanks!`);
+    lines.push(`Total: ${items.length} pending${overCount>0?` (${overCount} overdue — priority)`:""}. Please update each row's Status in the sheet once completed. Thanks!`);
     const txt=lines.join("\n"), init=d.replace(/[^A-Za-z]/g,"").slice(0,2).toUpperCase()||"?";
     const st=logStats(d);
     const badge = st.count>=3 ? `<span class="fu-badge max">${st.count}× · escalate</span>`
